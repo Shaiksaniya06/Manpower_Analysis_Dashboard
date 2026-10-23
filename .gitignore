@@ -9,3 +9,7 @@ node_modules/
 dist/
 build/
 *.log
+
+scratch_test.py
+
+scratch_test.py

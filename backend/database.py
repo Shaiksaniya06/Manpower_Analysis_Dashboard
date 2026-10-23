@@ -1,10 +1,11 @@
+
 import os
 from pathlib import Path
 from abc import ABC, abstractmethod
 from typing import Optional
 
 import pandas as pd
-import numpy as np
+# pyrefly: ignore[missing-import]
 from dotenv import load_dotenv
 
 # --------------------------------------------------
@@ -15,7 +16,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 BACKEND_DIR = Path(__file__).resolve().parent
 CSV_PATH = BASE_DIR / "Manpower_5Year_Dataset.csv"
 
-# Load environment variables from backend/.env
+# Load local environment variables from backend/.env
 load_dotenv(BACKEND_DIR / ".env")
 
 
@@ -24,13 +25,11 @@ load_dotenv(BACKEND_DIR / ".env")
 # --------------------------------------------------
 
 class IDatabaseProvider(ABC):
-    """
-    Common interface for CSV and Microsoft SQL Server providers.
-    """
+    """Common interface for CSV and SQL Server providers."""
 
     @abstractmethod
     def get_manpower_data(self) -> pd.DataFrame:
-        """Fetch manpower records as a Pandas DataFrame."""
+        """Fetch manpower records."""
         pass
 
     @abstractmethod
@@ -44,10 +43,7 @@ class IDatabaseProvider(ABC):
 # --------------------------------------------------
 
 class CSVDataProvider(IDatabaseProvider):
-    """
-    CSV provider for local testing.
-    Uses synthetic fallback data if the CSV file is absent.
-    """
+    """CSV provider with synthetic fallback data for demonstrations."""
 
     def __init__(self, file_path: Path = CSV_PATH):
         self.file_path = file_path
@@ -93,11 +89,11 @@ class CSVDataProvider(IDatabaseProvider):
         return self._cached_df.copy()
 
     def is_connected(self) -> bool:
-        # Indicates the CSV provider is available, not SQL connectivity.
+        # The CSV provider is available even when using generated data.
         return True
 
     def _generate_fallback_data(self) -> pd.DataFrame:
-        """Generate sample data if the CSV file is unavailable."""
+        """Generate synthetic sample data when the CSV is unavailable."""
 
         records = []
 
@@ -122,25 +118,26 @@ class CSVDataProvider(IDatabaseProvider):
         )
 
         for i in range(1, 201):
-            emp_id = f"NR{i:05d}"
+            emp_id = f"SAMPLE{i:05d}"
             area = areas[i % len(areas)]
             div = divisions[i % len(divisions)]
             grp = groups[i % len(groups)]
             desig = desigs[i % len(desigs)]
 
-            lvl = (
+            level = (
                 "Level 13A"
                 if "SG" in desig or "SF" in desig
                 else "Level 11"
             )
 
-            off_type = "GO" if grp == "GROUP A" else "NGO"
+            officer_type = "GO" if grp == "GROUP A" else "NGO"
 
+            # One snapshot every six months across five years.
             for dt in dates[::6]:
                 records.append(
                     {
                         "EMPLOYEECODE": emp_id,
-                        "EMPLOYEENAME": f"Employee {i}",
+                        "EMPLOYEENAME": f"Sample Employee {i}",
                         "DESIG": desig,
                         "SERVICESTATCODE": "SERVICE",
                         "DATEOFBIRTH": pd.Timestamp("1980-01-01"),
@@ -154,17 +151,17 @@ class CSVDataProvider(IDatabaseProvider):
                             - pd.Timedelta(days=i * 20)
                         ),
                         "BASICPAY": 80000 + (i * 200),
-                        "LEVEL": lvl,
+                        "LEVEL": level,
                         "AREA": area,
                         "DIVISION": div,
                         "PWD": "NO",
                         "RESERVCODE": "UR",
-                        "RELIGION": "HINDU",
+                        "RELIGION": "SAMPLE",
                         "SEX": "MALE" if i % 2 == 0 else "FEMALE",
                         "CATEGORY": "TECH",
                         "GROUP": grp,
                         "EXSERVICEMEN": "NO",
-                        "OFFICERTYPE": off_type,
+                        "OFFICERTYPE": officer_type,
                         "PFTYPE": "NPS",
                         "AS ON DATE": dt,
                     }
@@ -179,19 +176,23 @@ class CSVDataProvider(IDatabaseProvider):
 
 class MSSQLDatabaseProvider(IDatabaseProvider):
     """
-    Connects to the Manpower_Analysis database using
-    Windows Authentication and reads from StarSchema.
+    SQL Server provider.
+
+    Configure DB_ENGINE=mssql and set MSSQL_CONNECTION_STRING
+    in the environment or backend/.env before using this provider.
     """
 
     def __init__(self, connection_string: Optional[str] = None):
-        self.connection_string = connection_string or os.getenv(
-            "MSSQL_CONNECTION_STRING",
-            (
-                "mssql+pyodbc://@DESKTOP-URV8SLM/Manpower_Analysis"
-                "?driver=ODBC+Driver+17+for+SQL+Server"
-                "&trusted_connection=yes"
-            ),
+        self.connection_string = (
+            connection_string
+            or os.getenv("MSSQL_CONNECTION_STRING")
         )
+
+        if not self.connection_string:
+            raise ValueError(
+                "MSSQL_CONNECTION_STRING must be configured "
+                "to use the SQL Server provider."
+            )
 
         self._engine = None
 
@@ -204,20 +205,16 @@ class MSSQLDatabaseProvider(IDatabaseProvider):
                     self.connection_string,
                     pool_pre_ping=True,
                 )
-
             except ImportError as exc:
                 raise ImportError(
                     "SQLAlchemy and pyodbc are required. "
-                    "Run: py -m pip install sqlalchemy pyodbc"
+                    "Install them with: py -m pip install sqlalchemy pyodbc"
                 ) from exc
 
         return self._engine
 
     def get_manpower_data(self) -> pd.DataFrame:
-        """
-        Join the Star Schema tables and return the column names
-        expected by the existing dashboard data service.
-        """
+        """Read manpower records from the existing StarSchema tables."""
 
         query = os.getenv(
             "MSSQL_QUERY",
@@ -292,7 +289,7 @@ class MSSQLDatabaseProvider(IDatabaseProvider):
         return df
 
     def is_connected(self) -> bool:
-        """Test the actual SQL Server connection."""
+        """Test SQL Server connectivity."""
 
         try:
             from sqlalchemy import text

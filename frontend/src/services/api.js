@@ -2,8 +2,8 @@
  * Frontend API Service with automatic fallback to client-side analytical data engine.
  * Seamlessly connects to FastAPI at http://127.0.0.1:8000
  */
+const API_BASE = 'https://manpower-analysis-dashboard.onrender.com/api';
 
-const API_BASE = 'http://127.0.0.1:8000/api';
 
 export async function checkBackendHealth() {
   try {
